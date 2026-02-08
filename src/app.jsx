@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import InstallView from './install';
+import InstallView from './install.jsx'; // Explicit extension added
 import { 
   Upload, Award, Database, LogOut, CheckCircle, 
   Shield, Download, Settings, Server, Lock, QrCode, 
   User, Trash2, RotateCcw, Save, Menu, Globe, Key,
   FilePlus, Move, Check, X, AlertCircle, Edit, List,
   Layout, Eye, Play, CornerDownRight, BarChart, Plus,
-  Search, ShieldCheck, UserPlus, Info, ExternalLink, Image as ImageIcon
+  Search, ShieldCheck, UserPlus, Info, ExternalLink, Image as ImageIcon,
+  Users, Activity, Radio, FileText
 } from 'lucide-react';
 
 // ================= API Utils =================
@@ -36,73 +37,174 @@ const apiFetch = async (endpoint, options = {}) => {
 
 // ================= Components =================
 
-// 1. User Center (Updated)
-const UserCenterView = ({ user, refreshUser }) => {
-    const [modal, setModal] = useState(null); // 'password', '2fa_setup', '2fa_disable'
+// 0. Dashboard View (New)
+const DashboardView = ({ user }) => {
+    const [stats, setStats] = useState(null);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        apiFetch('/stats/dashboard')
+            .then(setStats)
+            .catch(err => {
+                console.error(err);
+                setError(err.message || "无法加载统计数据");
+            });
+    }, []);
+
+    if (error) return <div className="p-8 text-center text-red-500 bg-red-50 rounded-lg border border-red-200 m-8">❌ 统计数据加载失败: {error}</div>;
+
+    if (!stats) return (
+        <div className="p-8 text-center text-slate-400 flex flex-col items-center gap-2">
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            加载统计数据中...
+        </div>
+    );
+
+    // Helper Card Component
+    const StatCard = ({ title, value, icon: Icon, color, sub }) => (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
+            <div>
+                <div className="text-slate-500 text-xs font-bold uppercase mb-2">{title}</div>
+                <div className="text-3xl font-black text-slate-800">{value}</div>
+                {sub && <div className="text-xs text-slate-400 mt-1">{sub}</div>}
+            </div>
+            {Icon && <div className={`p-4 rounded-full ${color || 'bg-blue-50 text-blue-600'}`}><Icon size={24} /></div>}
+        </div>
+    );
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-slate-900 text-white rounded-lg"><Activity size={20}/></div>
+                <h2 className="text-2xl font-bold">概览仪表盘</h2>
+            </div>
+
+            {/* 普通用户视图 */}
+            {user.role === 'user' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <StatCard title="日志总数 (QSO)" value={stats.qsos} icon={Database} color="bg-blue-100 text-blue-700" />
+                    <StatCard title="通联波段" value={stats.bands} icon={Radio} color="bg-indigo-100 text-indigo-700" />
+                    <StatCard title="通联模式" value={stats.modes} icon={Activity} color="bg-purple-100 text-purple-700" />
+                    <StatCard title="DXCC 实体" value={stats.dxccs} icon={Globe} color="bg-green-100 text-green-700" />
+                    <div className="col-span-full md:col-span-2">
+                        <StatCard title="已获奖状" value={stats.my_awards} icon={Award} color="bg-yellow-100 text-yellow-700" />
+                    </div>
+                </div>
+            )}
+
+            {/* 奖状管理员视图 */}
+            {user.role === 'award_admin' && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <StatCard title="已批准奖状 (系统总计)" value={stats.total_approved} icon={Award} color="bg-green-100 text-green-700" sub="所有可供申请的奖状" />
+                    <StatCard title="我的草稿" value={stats.my_drafts} icon={FileText} color="bg-slate-100 text-slate-700" sub="尚未发布的奖状" />
+                    <StatCard title="待审核" value={stats.pending} icon={AlertCircle} color="bg-orange-100 text-orange-700" sub="等待处理的发布请求" />
+                </div>
+            )}
+
+            {/* 系统管理员视图 */}
+            {user.role === 'admin' && (
+                <div className="space-y-8">
+                    {/* 第一排：系统状态与人员 */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                         <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-lg shadow-slate-300">
+                             <div className="text-slate-400 text-xs font-bold uppercase mb-2">系统状态</div>
+                             <div className="text-2xl font-bold flex items-center gap-2">
+                                 <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div> 运行正常
+                             </div>
+                         </div>
+                         <StatCard title="在线用户" value={stats.online_users?.reduce((a,b)=>a+parseInt(b.count),0) || 0} icon={Activity} color="bg-green-100 text-green-700" sub={stats.online_users?.map(u => `${u.role}: ${u.count}`).join(', ')} />
+                         <StatCard title="注册用户总数" value={stats.total_users?.find(u=>u.role==='user')?.count || 0} icon={Users} color="bg-blue-100 text-blue-700" />
+                         <StatCard title="奖状管理员" value={stats.total_users?.find(u=>u.role==='award_admin')?.count || 0} icon={Shield} color="bg-purple-100 text-purple-700" />
+                    </div>
+
+                    {/* 第二排：奖状数据 */}
+                    <div>
+                        <h3 className="font-bold text-lg mb-4 text-slate-600">奖状系统数据</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <StatCard title="奖状总数 (已发布)" value={stats.awards_approved} icon={Award} />
+                            <StatCard title="待审核奖状" value={stats.awards_pending} icon={AlertCircle} color="bg-orange-100 text-orange-700" />
+                            <StatCard title="已颁发奖状总次" value={stats.awards_issued} icon={CheckCircle} color="bg-yellow-100 text-yellow-700" />
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// 1. User Center (Updated with Dangerous Actions)
+const UserCenterView = ({ user, refreshUser, onLogout }) => {
+    const [modal, setModal] = useState(null); 
     const [qr, setQr] = useState('');
     const [secret, setSecret] = useState('');
     const [code, setCode] = useState('');
     
     // Forms state
     const [passForm, setPassForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
-    const [disablePass, setDisablePass] = useState('');
+    const [confirmActionPass, setConfirmActionPass] = useState('');
 
-    // Handle 2FA Setup Flow
-    const start2FASetup = async (e) => {
-        if(e) { e.preventDefault(); e.stopPropagation(); }
+    const start2FASetup = async () => {
         try {
             const res = await apiFetch('/user/2fa/setup', { method: 'POST' });
-            setSecret(res.secret);
-            setQr(res.qr);
-            setModal('2fa_setup');
+            setSecret(res.secret); setQr(res.qr); setModal('2fa_setup');
         } catch(err) { alert(err.message); }
     };
 
-    const confirm2FA = async (e) => {
-        if(e) { e.preventDefault(); e.stopPropagation(); }
+    const confirm2FA = async () => {
         try {
             await apiFetch('/user/2fa/enable', { method: 'POST', body: JSON.stringify({ secret, token: code }) });
-            alert('2FA 已成功开启！');
-            setModal(null);
-            refreshUser();
+            alert('2FA 已成功开启！'); setModal(null); refreshUser();
         } catch(err) { alert(err.message); }
     };
 
-    // Handle 2FA Disable
-    const disable2FA = async (e) => {
-        if(e) { e.preventDefault(); e.stopPropagation(); }
+    const disable2FA = async () => {
         try {
-            await apiFetch('/user/2fa/disable', { method: 'POST', body: JSON.stringify({ password: disablePass }) });
-            alert('2FA 已关闭');
-            setModal(null);
-            refreshUser();
+            await apiFetch('/user/2fa/disable', { method: 'POST', body: JSON.stringify({ password: confirmActionPass }) });
+            alert('2FA 已关闭'); setModal(null); refreshUser();
         } catch(err) { alert(err.message); }
     };
 
-    // Handle Password Change
-    const changePassword = async (e) => {
-        if(e) { e.preventDefault(); e.stopPropagation(); }
+    const changePassword = async () => {
         if(passForm.newPassword !== passForm.confirmPassword) return alert('两次输入的新密码不一致');
         try {
-            // Check if 2FA header needed
             if (user.has2fa) {
                 const c = prompt('请输入 2FA 验证码以确认修改密码:');
                 if(!c) return;
                 sessionStorage.setItem('temp_2fa_code', c);
             }
-            
             await apiFetch('/user/password', { method: 'POST', body: JSON.stringify(passForm) });
-            alert('密码修改成功');
-            setModal(null);
-            setPassForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
+            alert('密码修改成功'); setModal(null);
         } catch(err) { alert(err.message); }
+    };
+
+    const handleDangerousAction = async (action) => {
+        // action: 'clear_logs' or 'delete_account'
+        try {
+            if (user.has2fa) {
+                const c = prompt('请输入 2FA 验证码以确认:');
+                if(!c) return;
+                sessionStorage.setItem('temp_2fa_code', c);
+            }
+            const url = action === 'clear_logs' ? '/user/logs' : '/user/account';
+            await apiFetch(url, { 
+                method: 'DELETE', 
+                body: JSON.stringify({ password: confirmActionPass }) 
+            });
+            
+            if (action === 'delete_account') {
+                alert('账号已注销');
+                onLogout();
+            } else {
+                alert('操作成功');
+                setModal(null);
+            }
+        } catch (err) { alert(err.message); }
     };
 
     return (
         <div className="max-w-3xl space-y-6">
             <h3 className="text-xl font-bold flex items-center gap-2"><User className="text-blue-600"/> 用户中心</h3>
             
-            {/* Account Info */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border">
                 <div className="flex items-center gap-4 mb-6">
                     <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-2xl font-black text-slate-400">
@@ -110,90 +212,86 @@ const UserCenterView = ({ user, refreshUser }) => {
                     </div>
                     <div>
                         <div className="text-2xl font-bold">{user.callsign}</div>
-                        <div className="text-slate-500 text-sm">用户ID: {user.id} | 角色: {user.role}</div>
+                        <div className="text-slate-500 text-sm">角色: {user.role}</div>
                     </div>
                 </div>
             </div>
 
-            {/* Security Settings */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border">
                 <h4 className="font-bold text-lg mb-4 flex items-center gap-2"><ShieldCheck className="text-green-600"/> 安全设置</h4>
                 <div className="space-y-4">
-                    
-                    {/* Password */}
                     <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                        <div className="flex items-center gap-3">
-                            <Key className="text-slate-400" />
-                            <div>
-                                <div className="font-bold">登录密码</div>
-                                <div className="text-xs text-slate-400">建议定期修改密码以保护账户安全</div>
-                            </div>
-                        </div>
-                        <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setModal('password'); }} className="bg-white border hover:bg-slate-50 px-4 py-2 rounded-lg text-sm font-bold transition-colors">修改密码</button>
+                        <div className="flex items-center gap-3"><Key className="text-slate-400" /><div><div className="font-bold">登录密码</div></div></div>
+                        <button onClick={() => setModal('password')} className="bg-white border px-4 py-2 rounded-lg text-sm font-bold">修改密码</button>
                     </div>
-
-                    {/* 2FA */}
                     <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                        <div className="flex items-center gap-3">
-                            <Lock className={user.has2fa ? "text-green-500" : "text-slate-400"} />
-                            <div>
-                                <div className="font-bold">两步验证 (2FA)</div>
-                                <div className="text-xs text-slate-400">{user.has2fa ? '已开启，账户受到保护' : '未开启，建议开启以提升安全性'}</div>
-                            </div>
-                        </div>
+                        <div className="flex items-center gap-3"><Lock className={user.has2fa ? "text-green-500" : "text-slate-400"} /><div><div className="font-bold">两步验证 (2FA)</div><div className="text-xs text-slate-400">{user.has2fa ? '已开启' : '未开启'}</div></div></div>
                         {user.has2fa ? (
-                            <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setModal('2fa_disable'); }} className="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2 rounded-lg text-sm font-bold transition-colors">关闭</button>
+                            <button onClick={() => setModal('2fa_disable')} className="bg-red-50 text-red-600 px-4 py-2 rounded-lg text-sm font-bold">关闭</button>
                         ) : (
-                            <button type="button" onClick={start2FASetup} className="bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-bold transition-colors">开启</button>
+                            <button onClick={start2FASetup} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold">开启</button>
                         )}
                     </div>
-
                 </div>
             </div>
 
-            {/* Modals */}
+            {user.role === 'user' && (
+                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-red-100">
+                    <h4 className="font-bold text-lg mb-4 flex items-center gap-2 text-red-600"><AlertCircle/> 危险区域</h4>
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 bg-red-50/50 rounded-xl">
+                            <div><div className="font-bold text-red-800">清空所有日志</div><div className="text-xs text-red-600">将永久删除您上传的所有 QSO 记录</div></div>
+                            <button onClick={() => setModal('clear_logs')} className="bg-red-100 text-red-700 hover:bg-red-200 px-4 py-2 rounded-lg text-sm font-bold">清空日志</button>
+                        </div>
+                        <div className="flex items-center justify-between p-4 bg-red-50/50 rounded-xl">
+                            <div><div className="font-bold text-red-800">注销账号</div><div className="text-xs text-red-600">将永久删除您的账号及所有数据，无法恢复</div></div>
+                            <button onClick={() => setModal('delete_account')} className="bg-red-600 text-white hover:bg-red-700 px-4 py-2 rounded-lg text-sm font-bold">注销账号</button>
+                        </div>
+                    </div>
+                 </div>
+            )}
+
             {modal && (
                 <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 relative z-[101]">
                         <div className="flex justify-between items-center border-b pb-4">
                             <h3 className="font-bold text-lg">
                                 {modal === 'password' && '修改密码'}
-                                {modal === '2fa_setup' && '配置两步验证'}
-                                {modal === '2fa_disable' && '关闭两步验证'}
+                                {modal === '2fa_setup' && '配置 2FA'}
+                                {(modal === '2fa_disable' || modal.includes('delete') || modal.includes('clear')) && '安全确认'}
                             </h3>
-                            <button type="button" onClick={()=>{setModal(null); setQr(''); setSecret('');}}><X size={20}/></button>
+                            <button onClick={()=>{setModal(null); setQr('');}}><X size={20}/></button>
                         </div>
 
                         {modal === 'password' && (
                             <div className="space-y-4">
-                                <input type="password" placeholder="当前密码" className="w-full border p-3 rounded-lg"
-                                    value={passForm.oldPassword} onChange={e=>setPassForm({...passForm, oldPassword: e.target.value})} />
-                                <input type="password" placeholder="新密码" className="w-full border p-3 rounded-lg"
-                                    value={passForm.newPassword} onChange={e=>setPassForm({...passForm, newPassword: e.target.value})} />
-                                <input type="password" placeholder="确认新密码" className="w-full border p-3 rounded-lg"
-                                    value={passForm.confirmPassword} onChange={e=>setPassForm({...passForm, confirmPassword: e.target.value})} />
-                                <button type="button" onClick={changePassword} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold">确认修改</button>
+                                <input type="password" placeholder="当前密码" className="w-full border p-3 rounded-lg" onChange={e=>setPassForm({...passForm, oldPassword: e.target.value})} />
+                                <input type="password" placeholder="新密码" className="w-full border p-3 rounded-lg" onChange={e=>setPassForm({...passForm, newPassword: e.target.value})} />
+                                <input type="password" placeholder="确认新密码" className="w-full border p-3 rounded-lg" onChange={e=>setPassForm({...passForm, confirmPassword: e.target.value})} />
+                                <button onClick={changePassword} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold">确认修改</button>
                             </div>
                         )}
 
                         {modal === '2fa_setup' && (
                             <div className="space-y-4 text-center">
-                                <p className="text-sm text-slate-500 text-left">请使用 Authenticator App (如 Google Auth, Microsoft Auth) 扫描下方二维码。</p>
                                 <div className="flex justify-center bg-white p-2 border rounded-lg">
-                                    {qr ? <img src={qr} alt="2FA QR Code" className="w-48 h-48"/> : <div className="w-48 h-48 flex items-center justify-center text-slate-300">加载中...</div>}
+                                    {qr ? <img src={qr} alt="2FA QR" className="w-48 h-48"/> : <div>Loading...</div>}
                                 </div>
-                                <input placeholder="输入 App 生成的 6 位验证码" className="w-full border p-3 rounded-lg text-center font-mono text-xl tracking-widest"
-                                    maxLength={6} value={code} onChange={e=>setCode(e.target.value)} />
-                                <button type="button" onClick={confirm2FA} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold">验证并开启</button>
+                                <input placeholder="6 位验证码" className="w-full border p-3 rounded-lg text-center font-mono text-xl" maxLength={6} onChange={e=>setCode(e.target.value)} />
+                                <button onClick={confirm2FA} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold">验证开启</button>
                             </div>
                         )}
 
-                        {modal === '2fa_disable' && (
+                        {(modal === '2fa_disable' || modal === 'clear_logs' || modal === 'delete_account') && (
                             <div className="space-y-4">
-                                <p className="text-sm text-red-500 bg-red-50 p-3 rounded-lg">警告：关闭两步验证将降低您的账户安全性。</p>
-                                <input type="password" placeholder="输入当前登录密码以确认" className="w-full border p-3 rounded-lg"
-                                    value={disablePass} onChange={e=>setDisablePass(e.target.value)} />
-                                <button type="button" onClick={disable2FA} className="w-full bg-red-600 text-white py-3 rounded-lg font-bold">确认关闭</button>
+                                <p className="text-sm bg-red-50 text-red-600 p-3 rounded-lg">
+                                    {modal === '2fa_disable' ? '警告：关闭 2FA 将降低账户安全性。' : '此操作不可逆，请输入登录密码以确认。'}
+                                </p>
+                                <input type="password" placeholder="登录密码" className="w-full border p-3 rounded-lg" onChange={e=>setConfirmActionPass(e.target.value)} />
+                                <button onClick={() => {
+                                    if(modal==='2fa_disable') disable2FA();
+                                    else handleDangerousAction(modal);
+                                }} className="w-full bg-red-600 text-white py-3 rounded-lg font-bold">确认执行</button>
                             </div>
                         )}
                     </div>
@@ -203,8 +301,8 @@ const UserCenterView = ({ user, refreshUser }) => {
     );
 };
 
-// 2. Logbook View (from previous context, kept for completeness)
-const LogbookView = ({ t }) => {
+// 2. Logbook View
+const LogbookView = () => {
     const [file, setFile] = useState(null);
     const [uploading, setUploading] = useState(false);
     const [stats, setStats] = useState(null);
@@ -215,7 +313,6 @@ const LogbookView = ({ t }) => {
         setUploading(true);
         const formData = new FormData();
         formData.append('file', file);
-
         try {
             const res = await apiFetch('/logbook/upload', { method: 'POST', body: formData });
             setStats(res);
@@ -251,7 +348,7 @@ const LogbookView = ({ t }) => {
     );
 };
 
-// 3. Award Designer (from previous context)
+// 3. Award Designer
 const AwardDesigner = ({ onClose }) => {
     const [bgUrl, setBgUrl] = useState('');
     const [elements, setElements] = useState([]); 
@@ -344,7 +441,6 @@ const AwardDesigner = ({ onClose }) => {
                                     <button onClick={()=>setElements(elements.filter(x=>x.id!==el.id))} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 w-5 h-5 flex items-center justify-center text-xs"><X size={10}/></button>
                                 </div>
                             ))}
-                            {(!bgUrl) && <div className="absolute inset-0 flex items-center justify-center text-slate-400">请上传背景图</div>}
                         </div>
                     </div>
                 </div>
@@ -357,22 +453,35 @@ const AwardDesigner = ({ onClose }) => {
     );
 };
 
-// 4. User Management (Admin - from previous context)
+// 4. User Management (Admin - Updated with Create)
 const UserManage = () => {
     const [users, setUsers] = useState([]);
     const [editing, setEditing] = useState(null);
+    const [creating, setCreating] = useState(false);
     const [twoFaCode, setTwoFaCode] = useState('');
+    const [newUserInfo, setNewUserInfo] = useState({ callsign: '', password: '', role: 'user' });
     
     useEffect(() => { loadUsers(); }, []);
     
-    const loadUsers = async () => { try { const data = await apiFetch('/admin/users'); setUsers(data); } catch(e) {} };
+    const loadUsers = async () => { 
+        try { 
+            const data = await apiFetch('/admin/users'); 
+            setUsers(data); 
+        } catch(e) { 
+            console.error("Failed to load users:", e);
+            // Optionally alert if it's not just a redirect
+            if (e.status !== 401 && e.status !== 403) {
+                 alert("加载用户列表失败: " + e.message);
+            }
+        } 
+    };
 
     const handleAction = async (method, url, body = {}) => {
         try {
             const headers = twoFaCode ? { 'x-2fa-code': twoFaCode } : {};
             await apiFetch(url, { method, body: JSON.stringify(body), headers });
             alert('操作成功');
-            loadUsers(); setEditing(null); setTwoFaCode('');
+            loadUsers(); setEditing(null); setCreating(false); setTwoFaCode(''); setNewUserInfo({ callsign: '', password: '', role: 'user' });
         } catch (err) {
             if (err.error === '2FA_REQUIRED') {
                 const code = prompt('请输入管理员 2FA 验证码以继续:');
@@ -383,41 +492,65 @@ const UserManage = () => {
 
     return (
         <div className="space-y-6">
-            <h3 className="font-bold text-xl flex items-center gap-2"><User size={24}/> 用户管理</h3>
-            <div className="bg-white rounded-xl shadow overflow-hidden">
-                <table className="w-full text-left">
-                    <thead className="bg-slate-50 border-b">
-                        <tr><th className="p-4">ID</th><th className="p-4">呼号</th><th className="p-4">角色</th><th className="p-4">2FA</th><th className="p-4">操作</th></tr>
-                    </thead>
-                    <tbody className="divide-y">
-                        {users.map(u => (
-                            <tr key={u.id}>
-                                <td className="p-4">{u.id}</td>
-                                <td className="p-4 font-mono font-bold">{u.callsign}</td>
-                                <td className="p-4"><span className={`px-2 py-1 rounded text-xs font-bold ${u.role==='admin'?'bg-red-100 text-red-700':u.role==='award_admin'?'bg-purple-100 text-purple-700':'bg-blue-100 text-blue-700'}`}>{u.role}</span></td>
-                                <td className="p-4">{u.has_2fa ? <Check className="text-green-500"/> : <span className="text-slate-300">-</span>}</td>
-                                <td className="p-4 flex gap-2">
-                                    <button onClick={()=>setEditing(u)} className="p-2 hover:bg-slate-100 rounded"><Edit size={16}/></button>
-                                    <button onClick={()=>handleAction('DELETE', `/admin/users/${u.id}`)} className="p-2 hover:bg-red-50 text-red-500 rounded"><Trash2 size={16}/></button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            <div className="flex items-center justify-between">
+                <h3 className="font-bold text-xl flex items-center gap-2"><User size={24}/> 用户管理</h3>
+                <button onClick={()=>setCreating(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><UserPlus size={18}/> 添加用户</button>
             </div>
-            {editing && (
+            
+            {users.length === 0 ? (
+                <div className="text-center p-8 bg-white rounded-xl shadow border border-slate-100 text-slate-400">
+                    暂无用户数据或加载失败
+                </div>
+            ) : (
+                <div className="bg-white rounded-xl shadow overflow-hidden">
+                    <table className="w-full text-left">
+                        <thead className="bg-slate-50 border-b">
+                            <tr><th className="p-4">ID</th><th className="p-4">呼号</th><th className="p-4">角色</th><th className="p-4">2FA</th><th className="p-4">操作</th></tr>
+                        </thead>
+                        <tbody className="divide-y">
+                            {users.map(u => (
+                                <tr key={u.id}>
+                                    <td className="p-4">{u.id}</td>
+                                    <td className="p-4 font-mono font-bold">{u.callsign}</td>
+                                    <td className="p-4"><span className={`px-2 py-1 rounded text-xs font-bold ${u.role==='admin'?'bg-red-100 text-red-700':u.role==='award_admin'?'bg-purple-100 text-purple-700':'bg-blue-100 text-blue-700'}`}>{u.role}</span></td>
+                                    <td className="p-4">{u.has_2fa ? <Check className="text-green-500"/> : <span className="text-slate-300">-</span>}</td>
+                                    <td className="p-4 flex gap-2">
+                                        <button onClick={()=>setEditing(u)} className="p-2 hover:bg-slate-100 rounded"><Edit size={16}/></button>
+                                        <button onClick={()=>handleAction('DELETE', `/admin/users/${u.id}`)} className="p-2 hover:bg-red-50 text-red-500 rounded"><Trash2 size={16}/></button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {/* Create/Edit Modal */}
+            {(editing || creating) && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                     <div className="bg-white p-6 rounded-xl w-full max-w-md space-y-4">
-                        <h4 className="font-bold">编辑用户 {editing.callsign}</h4>
-                        <select className="w-full p-2 border rounded" value={editing.role} onChange={e=>setEditing({...editing, role:e.target.value})}>
+                        <h4 className="font-bold">{creating ? '添加新用户' : `编辑用户 ${editing.callsign}`}</h4>
+                        
+                        {creating && (
+                            <input className="w-full p-2 border rounded" placeholder="呼号" value={newUserInfo.callsign} onChange={e=>setNewUserInfo({...newUserInfo, callsign: e.target.value})} />
+                        )}
+
+                        <select className="w-full p-2 border rounded" value={creating ? newUserInfo.role : editing.role} onChange={e=> creating ? setNewUserInfo({...newUserInfo, role: e.target.value}) : setEditing({...editing, role:e.target.value})}>
                             <option value="user">普通用户</option><option value="award_admin">奖状管理员</option><option value="admin">系统管理员</option>
                         </select>
-                        <input className="w-full p-2 border rounded" placeholder="重置密码 (留空不修改)" type="password" id="newpass"/>
+                        
+                        <input className="w-full p-2 border rounded" placeholder={creating ? "设置密码" : "重置密码 (留空不修改)"} type="password" id="modal-pass" value={creating ? newUserInfo.password : undefined} onChange={creating ? (e)=>setNewUserInfo({...newUserInfo, password:e.target.value}) : undefined}/>
+                        
                         <button onClick={()=>{
-                            const pass = document.getElementById('newpass').value;
-                            handleAction('PUT', `/admin/users/${editing.id}`, { role: editing.role, password: pass || undefined })
-                        }} className="w-full bg-blue-600 text-white py-2 rounded font-bold">保存修改</button>
-                        <button onClick={()=>setEditing(null)} className="w-full text-slate-500 py-2">取消</button>
+                            if (creating) {
+                                handleAction('POST', '/admin/users', newUserInfo);
+                            } else {
+                                const pass = document.getElementById('modal-pass').value;
+                                handleAction('PUT', `/admin/users/${editing.id}`, { role: editing.role, password: pass || undefined });
+                            }
+                        }} className="w-full bg-blue-600 text-white py-2 rounded font-bold">确认保存</button>
+                        
+                        <button onClick={()=>{setEditing(null); setCreating(false);}} className="w-full text-slate-500 py-2">取消</button>
                     </div>
                 </div>
             )}
@@ -430,7 +563,6 @@ const UserManage = () => {
 export default function App() {
   const [view, setView] = useState('loading'); 
   const [user, setUser] = useState(null);
-  const [config, setConfig] = useState(null);
   const [subView, setSubView] = useState('dashboard');
   const [loginTab, setLoginTab] = useState('user'); 
   const [show2FAInput, setShow2FAInput] = useState(false);
@@ -439,7 +571,6 @@ export default function App() {
 
   useEffect(() => {
     apiFetch('/system-status').then(status => {
-        setConfig(status);
         if (!status.installed) {
             setView('install');
         } else {
@@ -473,8 +604,7 @@ export default function App() {
           localStorage.setItem('ham_token', res.token);
           localStorage.setItem('ham_user', JSON.stringify(res.user));
           setUser(res.user);
-          if (loginTab === 'admin') setSubView(res.user.role === 'admin' ? 'sysAdmin' : 'awardAdmin');
-          else setSubView('dashboard');
+          setSubView('dashboard'); // 默认进入仪表盘
           setView('main');
           setShow2FAInput(false);
       } catch (err) {
@@ -487,7 +617,7 @@ export default function App() {
 
   const handleLogout = () => { localStorage.clear(); window.location.reload(); };
 
-  if (view === 'install') return <InstallView onComplete={() => window.location.reload()} t={{installTitle: '系统安装'}} />;
+  if (view === 'install') return <InstallView onComplete={() => window.location.reload()} />;
 
   if (view === 'login') return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
@@ -528,7 +658,7 @@ export default function App() {
           { id: 'logbook', label: '日志管理', icon: Database, show: user.role === 'user' },
           { id: 'awardAdmin', label: '奖状管理', icon: FilePlus, show: ['admin', 'award_admin'].includes(user.role) },
           { id: 'sysAdmin', label: '系统设置', icon: Settings, show: user.role === 'admin' },
-          { id: 'users', label: '用户管理', icon: User, show: user.role === 'admin' },
+          { id: 'users', label: '用户管理', icon: Users, show: user.role === 'admin' },
           { id: 'userCenter', label: '用户中心', icon: User, show: true },
       ].filter(i => i.show);
 
@@ -551,23 +681,17 @@ export default function App() {
                   </div>
               </aside>
               <main className="flex-1 overflow-y-auto p-8 relative">
-                  <div className="max-w-5xl mx-auto">
-                      {subView === 'dashboard' && (
-                          <div className="grid grid-cols-3 gap-6">
-                              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><div className="text-slate-500 text-xs font-bold uppercase mb-2">操作权限</div><div className="text-2xl font-black text-slate-800 capitalize">{user.role.replace('_', ' ')}</div></div>
-                              <div className="bg-blue-600 p-6 rounded-2xl shadow-lg shadow-blue-200 text-white"><div className="text-blue-200 text-xs font-bold uppercase mb-2">系统状态</div><div className="text-2xl font-bold flex items-center gap-2"><CheckCircle /> 正常运行</div></div>
-                              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between"><div className="text-slate-500 text-xs font-bold uppercase mb-2">账户安全</div><div className="flex items-center justify-between"><span className="font-bold">{user.has2fa ? '2FA 已开启' : '2FA 未开启'}</span>{!user.has2fa && <button onClick={()=>{setSubView('userCenter')}} className="text-xs bg-slate-900 text-white px-2 py-1 rounded">去开启</button>}</div></div>
-                          </div>
-                      )}
+                  <div className="max-w-6xl mx-auto">
+                      {subView === 'dashboard' && <DashboardView user={user} />}
                       {subView === 'logbook' && <LogbookView />}
                       {subView === 'users' && <UserManage />}
                       {subView === 'awardAdmin' && (
                           <div className="space-y-6">
                              <div className="flex justify-between items-center"><h3 className="font-bold text-xl">奖状管理</h3><button onClick={()=>setShowDesigner(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow flex items-center gap-2"><Plus size={18}/> 新建奖状</button></div>
-                             <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400">暂无已发布的奖状，请点击新建</div>
+                             <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400">请新建奖状或在列表中管理</div>
                           </div>
                       )}
-                      {subView === 'userCenter' && <UserCenterView user={user} refreshUser={refreshUser} />}
+                      {subView === 'userCenter' && <UserCenterView user={user} refreshUser={refreshUser} onLogout={handleLogout} />}
                   </div>
                   {showDesigner && <AwardDesigner onClose={()=>setShowDesigner(false)} />}
               </main>

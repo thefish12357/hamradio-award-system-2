@@ -17,7 +17,7 @@ export default function InstallView({ onComplete, t }) {
     minioPort: '9000',
     minioAccessKey: '',
     minioSecretKey: '',
-    minioBucket: 'ham-awards',
+    minioBucket: 'ham-awards', // 默认 Bucket 名称
     useHttps: false
   });
 
@@ -46,7 +46,7 @@ export default function InstallView({ onComplete, t }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '安装失败');
-      alert('安装成功！页面将刷新。');
+      alert('安装成功！Bucket ' + config.minioBucket + ' 已初始化。页面将刷新。');
       onComplete();
     } catch (err) {
       alert(err.message);
@@ -83,10 +83,17 @@ export default function InstallView({ onComplete, t }) {
           {step === 2 && (
             <div className="space-y-6">
               <h3 className="font-bold text-lg flex items-center gap-2"><HardDrive className="text-orange-600"/> 存储配置 (MinIO)</h3>
+              <div className="p-4 bg-orange-50 text-orange-800 rounded-lg text-sm mb-4">
+                MinIO 用于存储奖状背景图。系统将自动尝试创建指定的 Bucket。
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <input name="minioEndpoint" value={config.minioEndpoint} onChange={handleChange} className="col-span-2 w-full border rounded-lg p-3" placeholder="Endpoint (e.g. localhost)" />
                 <input name="minioAccessKey" value={config.minioAccessKey} onChange={handleChange} className="w-full border rounded-lg p-3" placeholder="Access Key" />
                 <input name="minioSecretKey" type="password" value={config.minioSecretKey} onChange={handleChange} className="w-full border rounded-lg p-3" placeholder="Secret Key" />
+                <div className="col-span-2 space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Bucket Name (将自动创建)</label>
+                    <input name="minioBucket" value={config.minioBucket} onChange={handleChange} className="w-full border rounded-lg p-3" placeholder="e.g. ham-awards" />
+                </div>
               </div>
               <div className="flex gap-4">
                 <button type="button" onClick={() => setStep(1)} className="flex-1 bg-slate-100 font-bold rounded-xl">上一步</button>
@@ -105,7 +112,7 @@ export default function InstallView({ onComplete, t }) {
                 
                 <label className="flex items-center gap-3 p-4 bg-blue-50 rounded-xl cursor-pointer">
                   <input type="checkbox" name="useHttps" checked={config.useHttps} onChange={handleChange} className="w-5 h-5 accent-blue-600" />
-                  <span className="font-bold text-blue-800">启用 HTTPS</span>
+                  <span className="font-bold text-blue-800">启用 HTTPS (影响生成链接)</span>
                 </label>
               </div>
               <div className="flex gap-4">
