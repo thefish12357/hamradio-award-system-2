@@ -9,7 +9,7 @@ import {
   Layout, Eye, Play, CornerDownRight, BarChart, Plus,
   Search, ShieldCheck, UserPlus, Info, ExternalLink, Image as ImageIcon,
   Users, Activity, Radio, FileText, HardDrive, Clock, FileWarning,
-  Target, Calculator, Filter, Layers, Trophy, Crop, ZoomIn, ZoomOut, Grid, ChevronDown, Bell
+  Target, Calculator, Filter, Layers, Trophy, Crop, ZoomIn, ZoomOut, Grid, ChevronDown, ChevronRight, Bell
 } from 'lucide-react';
 
 // ================= API Utils =================
@@ -240,7 +240,7 @@ const DashboardView = ({ user }) => {
                     <StatCard title="日志总数 (QSO)" value={stats.qsos} icon={Database} color="bg-blue-100 text-blue-700" />
                     <StatCard title="通联波段" value={stats.bands} icon={Radio} color="bg-indigo-100 text-indigo-700" />
                     <StatCard title="通联模式" value={stats.modes} icon={Activity} color="bg-purple-100 text-purple-700" />
-                    <StatCard title="DXCC 实体" value={stats.dxccs} icon={Globe} color="bg-green-100 text-green-700" />
+                    <StatCard title="DXCC 实体 (Unique)" value={stats.dxccs} icon={Globe} color="bg-green-100 text-green-700" />
                     <div className="col-span-full md:col-span-2">
                         <StatCard title="已获奖状" value={stats.my_awards} icon={Award} color="bg-yellow-100 text-yellow-700" />
                     </div>
@@ -826,41 +826,37 @@ const AwardCenterView = ({ user }) => {
     );
 };
 
-// 2. Award Admin Manager (Refactored: Split Create, Drafts, Audit, Returned)
-const AwardAdminManager = () => {
-    const [tab, setTab] = useState('create'); // create, drafts_dropdown, audit_list
-    const [draftSubTab, setDraftSubTab] = useState('my_drafts'); // my_drafts, returned
+// 2. Award Admin Manager (Refactored: Accepts viewMode prop to handle specific section)
+const AwardAdminManager = ({ viewMode }) => {
+    // viewMode: 'create', 'drafts', 'returned', 'audit_list'
+    
+    // Internal state mapping for drafts logic
+    const isReturnedMode = viewMode === 'returned';
     
     const [drafts, setDrafts] = useState([]);
     const [auditList, setAuditList] = useState([]);
     const [editingAward, setEditingAward] = useState(null); 
     const [timelineModal, setTimelineModal] = useState(null); 
     
-    // Notifications logic
-    const [unreadReturned, setUnreadReturned] = useState(false);
+    // Initial check for create mode
+    useEffect(() => {
+        if (viewMode === 'create') {
+            setEditingAward({});
+        } else {
+            setEditingAward(null);
+        }
+    }, [viewMode]);
 
     const loadData = async () => {
-        // Load stats for red dots
-        apiFetch('/stats/dashboard').then(stats => {
-             if (stats.my_returned > 0) setUnreadReturned(true);
-        }).catch(console.error);
-
-        // Load content based on tab
-        if (tab === 'drafts_dropdown') {
-            const status = draftSubTab === 'my_drafts' ? 'drafts' : 'returned';
+        // Load content based on viewMode
+        if (viewMode === 'drafts' || viewMode === 'returned') {
+            const status = isReturnedMode ? 'returned' : 'drafts';
             apiFetch(`/awards/my?status=${status}`).then(setDrafts);
         }
-        if (tab === 'audit_list') apiFetch('/awards/my?status=audit_list').then(setAuditList);
+        if (viewMode === 'audit_list') apiFetch('/awards/my?status=audit_list').then(setAuditList);
     };
 
-    useEffect(() => { loadData(); }, [tab, draftSubTab]);
-
-    // Handle clearing notification when viewing returned drafts
-    useEffect(() => {
-        if (tab === 'drafts_dropdown' && draftSubTab === 'returned') {
-            setUnreadReturned(false);
-        }
-    }, [tab, draftSubTab]);
+    useEffect(() => { loadData(); }, [viewMode]);
 
     const handleDelete = async (id) => {
         if(!confirm('确定删除此记录吗？')) return;
@@ -907,75 +903,42 @@ const AwardAdminManager = () => {
 
     return (
         <div className="space-y-6">
-            {/* Top Tabs */}
-            <div className="flex bg-white p-1 rounded-xl shadow-sm border w-fit">
-                {/* 1. New Award */}
-                <button onClick={()=>setTab('create')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${tab==='create' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
-                    <Plus size={16}/> 新建奖状
-                </button>
-                
-                {/* 2. Drafts Box (Dropdown) */}
-                <div className="relative group">
-                    <button 
-                        onClick={()=>setTab('drafts_dropdown')} 
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all relative ${tab==='drafts_dropdown' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
-                    >
-                        <FileText size={16}/> 草稿箱
-                        {unreadReturned && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}
-                        <ChevronDown size={14} className="opacity-50"/>
-                    </button>
-                    {/* Hover dropdown (CSS driven group-hover usually, but for React logic we can just click to switch view, 
-                        and use a sub-menu inside the main view, OR implement a real dropdown. 
-                        The prompt says "Drafts is a dropdown". Let's show submenu when tab is active OR hover) 
-                    */}
-                    <div className="absolute top-full left-0 mt-2 w-40 bg-white shadow-xl rounded-lg border overflow-hidden hidden group-hover:block z-20">
-                        <button onClick={()=>{setTab('drafts_dropdown'); setDraftSubTab('my_drafts');}} className="block w-full text-left px-4 py-2 text-sm hover:bg-slate-50">
-                            我的草稿
-                        </button>
-                        <button onClick={()=>{setTab('drafts_dropdown'); setDraftSubTab('returned');}} className="block w-full text-left px-4 py-2 text-sm hover:bg-slate-50 relative">
-                            打回草稿
-                            {unreadReturned && <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full"></span>}
-                        </button>
-                    </div>
-                </div>
-
-                {/* 3. Audit List */}
-                <button onClick={()=>setTab('audit_list')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${tab==='audit_list' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
-                    <List size={16}/> 审核列表
-                </button>
-            </div>
+            {/* Header Title based on View Mode */}
+            <h3 className="text-xl font-bold flex items-center gap-2">
+                {viewMode === 'create' && <><Plus className="text-blue-500"/> 新建奖状 (New Award)</>}
+                {viewMode === 'drafts' && <><FileText className="text-orange-500"/> 我的草稿 (My Drafts)</>}
+                {viewMode === 'returned' && <><FileWarning className="text-red-500"/> 打回草稿 (Returned)</>}
+                {viewMode === 'audit_list' && <><List className="text-purple-500"/> 审核列表 (Audit List)</>}
+            </h3>
 
             <div className="bg-white rounded-2xl shadow-sm border p-6 min-h-[400px]">
-                {tab === 'create' && (
+                {viewMode === 'create' && (
                     <div className="text-center py-10">
-                        <div className="mb-4 text-slate-400">点击下方按钮开始设计新奖状</div>
-                        <button onClick={()=>setEditingAward({})} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 mx-auto hover:bg-blue-700 transition-colors">
-                            <Plus size={20}/> 创建新奖状
-                        </button>
+                        {editingAward ? (
+                            <div className="text-slate-500">正在打开编辑器...</div>
+                        ) : (
+                            <>
+                                <div className="mb-4 text-slate-400">点击下方按钮开始设计新奖状</div>
+                                <button onClick={()=>setEditingAward({})} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 mx-auto hover:bg-blue-700 transition-colors">
+                                    <Plus size={20}/> 创建新奖状
+                                </button>
+                            </>
+                        )}
                     </div>
                 )}
 
-                {tab === 'drafts_dropdown' && (
+                {(viewMode === 'drafts' || viewMode === 'returned') && (
                     <div>
-                        {/* Sub-tabs for better UI inside the section if dropdown is just for selection */}
-                        <div className="flex gap-4 mb-6 border-b pb-2">
-                            <button onClick={()=>setDraftSubTab('my_drafts')} className={`text-sm font-bold pb-2 border-b-2 transition-all ${draftSubTab==='my_drafts'?'border-blue-500 text-blue-600':'border-transparent text-slate-400'}`}>我的草稿</button>
-                            <button onClick={()=>setDraftSubTab('returned')} className={`text-sm font-bold pb-2 border-b-2 transition-all relative ${draftSubTab==='returned'?'border-red-500 text-red-600':'border-transparent text-slate-400'}`}>
-                                打回草稿
-                                {unreadReturned && draftSubTab !== 'returned' && <span className="absolute -top-1 -right-2 w-2 h-2 bg-red-500 rounded-full"></span>}
-                            </button>
-                        </div>
-
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {drafts.length === 0 && <div className="col-span-full text-center text-slate-400 py-10">空空如也</div>}
                             {drafts.map(d => (
                                 <div key={d.id} className="border rounded-xl overflow-hidden hover:border-blue-300 transition-colors group">
                                     <div className="h-32 bg-slate-100 bg-cover bg-center relative" style={{backgroundImage: `url(${d.bg_url})`}}>
-                                        {draftSubTab === 'returned' && <div className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded font-bold">已退回</div>}
+                                        {isReturnedMode && <div className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded font-bold">已退回</div>}
                                     </div>
                                     <div className="p-4">
                                         <h4 className="font-bold mb-1">{d.name || '未命名奖状'}</h4>
-                                        {draftSubTab === 'returned' && d.reject_reason && (
+                                        {isReturnedMode && d.reject_reason && (
                                             <div className="text-xs text-red-600 bg-red-50 p-2 rounded mb-2">原因: {d.reject_reason}</div>
                                         )}
                                         <div className="flex gap-2 mt-4">
@@ -989,7 +952,7 @@ const AwardAdminManager = () => {
                     </div>
                 )}
 
-                {tab === 'audit_list' && (
+                {viewMode === 'audit_list' && (
                     <table className="w-full text-left">
                         <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
                             <tr><th className="p-4">追踪码</th><th className="p-4">奖状名称</th><th className="p-4">提交时间</th><th className="p-4">当前状态</th><th className="p-4">操作</th></tr>
@@ -1025,34 +988,21 @@ const AwardAdminManager = () => {
     );
 };
 
-// 3. System Admin Award Manager (Refactored: Split Audit & Overview into parallel tabs)
-const SystemAdminAwardManager = () => {
-    // 4. 系统管理员界面中，奖状审核拆分为奖状审核和奖状总览两个并列同级标签
-    const [view, setView] = useState('audit'); // 'audit' or 'overview'
+// 3. System Admin Award Manager (Refactored: Accepts viewMode prop)
+const SystemAdminAwardManager = ({ viewMode }) => {
+    // viewMode: 'audit' or 'overview'
+    
     const [list, setList] = useState([]);
     const [actionModal, setActionModal] = useState(null); 
     const [reason, setReason] = useState('');
     const [detailModal, setDetailModal] = useState(null); 
     
-    // Notification
-    const [unreadPending, setUnreadPending] = useState(false);
-
     const load = () => {
-        // Fetch stats for red dot
-        apiFetch('/stats/dashboard').then(stats => {
-             if (stats.awards_pending > 0) setUnreadPending(true);
-        }).catch(console.error);
-
-        const url = view === 'audit' ? '/admin/awards/pending' : '/admin/awards/approved';
+        const url = viewMode === 'audit' ? '/admin/awards/pending' : '/admin/awards/approved';
         apiFetch(url).then(setList).catch(console.error);
     };
 
-    useEffect(() => { load(); }, [view]);
-
-    // Handle clearing notification
-    useEffect(() => {
-        if (view === 'audit') setUnreadPending(false);
-    }, [view]);
+    useEffect(() => { load(); }, [viewMode]);
 
     const handleAction = async () => {
         try {
@@ -1067,16 +1017,10 @@ const SystemAdminAwardManager = () => {
 
     return (
         <div className="space-y-6">
-            {/* Top Tabs with Notification */}
-            <div className="flex bg-white p-1 rounded-xl shadow-sm border w-fit">
-                <button onClick={()=>setView('audit')} className={`relative flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-bold transition-all ${view==='audit'?'bg-blue-600 text-white shadow':'text-slate-500 hover:bg-slate-50'}`}>
-                    <CheckCircle size={16}/> 奖状审核
-                    {unreadPending && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}
-                </button>
-                <button onClick={()=>setView('overview')} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-bold transition-all ${view==='overview'?'bg-purple-600 text-white shadow':'text-slate-500 hover:bg-slate-50'}`}>
-                    <Layout size={16}/> 奖状总览
-                </button>
-            </div>
+            {/* Title */}
+            <h3 className="text-xl font-bold flex items-center gap-2">
+                {viewMode === 'audit' ? <><CheckCircle className="text-blue-500"/> 奖状审核 (Award Audit)</> : <><Layout className="text-purple-500"/> 奖状总览 (Award Overview)</>}
+            </h3>
 
             {/* Content Table */}
             <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
@@ -1096,7 +1040,7 @@ const SystemAdminAwardManager = () => {
                                 <td className="p-4 text-sm text-slate-500">{new Date(item.created_at).toLocaleDateString()}</td>
                                 <td className="p-4 flex gap-2">
                                     <button onClick={()=>setDetailModal(item)} className="p-2 bg-slate-100 text-slate-600 rounded hover:bg-slate-200" title="查看详情"><Eye size={16}/></button>
-                                    {view === 'audit' ? (
+                                    {viewMode === 'audit' ? (
                                         <>
                                             <button onClick={()=>apiFetch('/admin/awards/audit', {method:'POST', body:JSON.stringify({id:item.id, action:'approve'})}).then(()=>{alert('已通过');load()})} className="px-3 py-1 bg-green-100 text-green-700 rounded font-bold text-sm">通过</button>
                                             <button onClick={()=>setActionModal({id:item.id, action:'reject', title:'打回申请'})} className="px-3 py-1 bg-red-100 text-red-700 rounded font-bold text-sm">打回</button>
@@ -1201,7 +1145,7 @@ const AwardDesigner = ({ initData, onClose }) => {
     // Initial Rule Structure (Complex V2)
     const defaultRules = {
         v2: true, // Marker for new rule system
-        basic: { startDate: '', endDate: '', qslRequired: false },
+        basic: { startDate: '', endDate: '', qslRequired: true }, // 2. Default QSL Required to true
         filters: [], // [{ field, operator, value }]
         logic: 'collection', // 'collection' or 'points'
         targets: { type: 'any', list: '' }, // type: any, callsign, dxcc, grid, etc.
@@ -1853,9 +1797,10 @@ const AllLogsView = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // 1. 修复：当前普通用户界面中，全部日志未显示当前用户的完整日志
+        // 3. 修复：当前普通用户界面中，全部日志未显示当前用户的完整日志
         setLoading(true);
-        apiFetch('/user/qsos')
+        // Added timestamp to prevent caching
+        apiFetch(`/user/qsos?t=${new Date().getTime()}`)
             .then(data => {
                 // Ensure data is an array
                 if (Array.isArray(data)) setLogs(data);
@@ -1882,7 +1827,7 @@ const AllLogsView = () => {
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 text-slate-500 font-bold border-b">
                             <tr>
-                                <th className="p-4">操作</th>
+                                <th className="p-4 w-24">操作</th>
                                 <th className="p-4">Date</th>
                                 <th className="p-4">Callsign</th>
                                 <th className="p-4">Band</th>
@@ -1899,6 +1844,7 @@ const AllLogsView = () => {
                                 logs.map(log => (
                                     <tr key={log.id} className="hover:bg-slate-50">
                                         <td className="p-4">
+                                            {/* 3. 每条日志前增设一列按钮，点击后可以查看详细通联信息及参与申领的奖项 */}
                                             <button onClick={()=>showQsoDetails(log)} className="px-3 py-1 bg-blue-50 text-blue-600 rounded text-xs font-bold hover:bg-blue-100 border border-blue-200">详情</button>
                                         </td>
                                         <td className="p-4 font-mono">{log.qso_date}</td>
@@ -1926,9 +1872,10 @@ const AllLogsView = () => {
                             <div><span className="text-slate-400 block text-xs uppercase">Band</span><span className="font-bold">{detailQso.band}</span></div>
                             <div><span className="text-slate-400 block text-xs uppercase">Mode</span><span className="font-bold">{detailQso.mode}</span></div>
                             <div className="col-span-2"><span className="text-slate-400 block text-xs uppercase">Country</span><span className="font-bold">{detailQso.country || '-'}</span></div>
-                            <div className="col-span-2"><span className="text-slate-400 block text-xs uppercase">State</span><span className="font-bold">{detailQso.state || '-'}</span></div>
+                            <div className="col-span-2"><span className="text-slate-400 block text-xs uppercase">State</span><span className="font-bold">{detailQso.state || detailQso.adif_raw?.state || '-'}</span></div>
                         </div>
 
+                        {/* 3. 查看该条日志参与申领的奖项 */}
                         <h4 className="font-bold text-sm mb-2 flex items-center gap-2"><Award size={14}/> 参与的奖项申领 (Participating Awards)</h4>
                         <div className="space-y-2 max-h-40 overflow-y-auto">
                             {qsoAwards.length === 0 ? <div className="text-slate-400 text-xs italic">该 QSO 暂未符合任何已发布奖项的基础条件</div> : (
@@ -2042,6 +1989,10 @@ export default function App() {
   const [show2FAInput, setShow2FAInput] = useState(false);
   const [loginForm, setLoginForm] = useState({});
   const [authMode, setAuthMode] = useState('login'); // Added for in-page register
+  
+  // New States for Menu and Notifications
+  const [expandedMenus, setExpandedMenus] = useState({});
+  const [notifications, setNotifications] = useState({ pending: 0, returned: 0 });
 
   useEffect(() => {
     apiFetch('/system-status').then(status => {
@@ -2058,6 +2009,28 @@ export default function App() {
         }
     }).catch(() => setView('auth'));
   }, []);
+
+  // 1 & 2. Auto-check for notifications every 1 second
+  useEffect(() => {
+      if (view !== 'main' || !user) return;
+      
+      const checkNotifications = () => {
+          // Re-use dashboard stats endpoint for notifications
+          // In a real app, you might want a lighter endpoint
+          apiFetch('/stats/dashboard').then(stats => {
+              if (user.role === 'admin') {
+                  setNotifications({ pending: stats.awards_pending || 0 });
+              } else if (user.role === 'award_admin') {
+                  setNotifications({ returned: stats.my_returned || 0 });
+              }
+          }).catch(console.error);
+      };
+
+      const intervalId = setInterval(checkNotifications, 1000);
+      checkNotifications(); // Initial check
+
+      return () => clearInterval(intervalId);
+  }, [view, user]);
 
   const refreshUser = async () => {
     try {
@@ -2103,6 +2076,24 @@ export default function App() {
   };
 
   const handleLogout = () => { localStorage.clear(); window.location.reload(); };
+
+  const toggleMenu = (id) => {
+      setExpandedMenus(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Clear notification on click
+  const handleMenuClick = (item) => {
+      if (item.children) {
+          toggleMenu(item.id);
+      } else {
+          setSubView(item.id);
+          // 1 & 2. Click to clear red dot simulation (real clear happens on next poll usually, but UI can be optimistic)
+          if (item.id === 'admin_audit') setNotifications(prev => ({ ...prev, pending: 0 }));
+          if (item.id === 'award_returned') setNotifications(prev => ({ ...prev, returned: 0 })); 
+          // Note: Logic says "Click to enter interface then eliminate red dot". 
+          // The interval will keep it 0 if the backend status changes, or we can just ignore it locally until refresh.
+      }
+  };
 
   if (view === 'install') return <InstallView onComplete={() => window.location.reload()} />;
 
@@ -2155,18 +2146,38 @@ export default function App() {
 
   if (view === 'main') {
       const menu = [
+          // Common
           { id: 'dashboard', label: '概览', icon: BarChart, show: true },
           { id: 'awards', label: '奖状大厅', icon: Award, show: true },
+          
+          // User Only
           { id: 'my_awards', label: '我的奖状', icon: CheckCircle, show: user.role === 'user' },
-          { id: 'logbook', label: '日志上传', icon: Upload, show: user.role === 'user' }, // Renamed from "日志管理"
-          { id: 'all_logs', label: '全部日志', icon: List, show: user.role === 'user' }, // 4. "全部日志" separated
+          { id: 'logbook', label: '日志上传', icon: Upload, show: user.role === 'user' }, 
+          { id: 'all_logs', label: '全部日志', icon: List, show: user.role === 'user' }, 
           
-          // Updated Menu Structure
-          { id: 'awardCreator', label: '奖状管理', icon: FilePlus, show: user.role === 'award_admin' }, // Changed Label
-          { id: 'awardAudit', label: '奖状管理', icon: ShieldCheck, show: user.role === 'admin' },
-          { id: 'issuanceManager', label: '颁发管理', icon: Trophy, show: user.role === 'admin' }, // 3. "颁发管理" separated
-          
+          // Award Admin Only (Split Views with Dropdown)
+          { id: 'award_create', label: '新建奖状', icon: Plus, show: user.role === 'award_admin' },
+          { 
+              id: 'drafts_group', 
+              label: '草稿箱', 
+              icon: FileText, 
+              show: user.role === 'award_admin',
+              isDropdown: true,
+              children: [
+                  { id: 'award_drafts', label: '我的草稿' },
+                  { id: 'award_returned', label: '打回草稿', notification: notifications.returned }
+              ],
+              notification: notifications.returned // 2. Parent red dot if child has notifications
+          },
+          { id: 'award_audit_list', label: '审核列表', icon: List, show: user.role === 'award_admin' },
+
+          // System Admin Only (Split Views)
+          { id: 'admin_audit', label: '奖状审核', icon: CheckCircle, show: user.role === 'admin', notification: notifications.pending }, // 1. System Admin Red Dot
+          { id: 'admin_overview', label: '奖状总览', icon: Layout, show: user.role === 'admin' },
+          { id: 'issuanceManager', label: '颁发管理', icon: Trophy, show: user.role === 'admin' }, 
           { id: 'users', label: '用户管理', icon: Users, show: user.role === 'admin' },
+          
+          // Common Bottom
           { id: 'userCenter', label: '用户中心', icon: User, show: true },
       ].filter(i => i.show);
 
@@ -2179,9 +2190,40 @@ export default function App() {
                   </div>
                   <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
                       {menu.map(item => (
-                          <button key={item.id} onClick={()=>setSubView(item.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${subView===item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-                              <item.icon size={18} /><span className="font-medium text-sm">{item.label}</span>
-                          </button>
+                          <div key={item.id}>
+                            <button 
+                                onClick={() => handleMenuClick(item)} 
+                                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all ${subView===item.id || (item.children && expandedMenus[item.id]) ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <item.icon size={18} />
+                                    <span className="font-medium text-sm">{item.label}</span>
+                                </div>
+                                {item.children ? (
+                                    <div className="flex items-center gap-2">
+                                        {item.notification > 0 && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
+                                        {expandedMenus[item.id] ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}
+                                    </div>
+                                ) : (
+                                    item.notification > 0 && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                                )}
+                            </button>
+                            {/* Dropdown Children */}
+                            {item.children && expandedMenus[item.id] && (
+                                <div className="ml-4 mt-1 pl-4 border-l border-slate-700 space-y-1">
+                                    {item.children.map(child => (
+                                        <button 
+                                            key={child.id}
+                                            onClick={() => handleMenuClick(child)}
+                                            className={`w-full flex items-center justify-between px-4 py-2 rounded-lg text-sm transition-all ${subView===child.id ? 'text-white font-bold bg-white/10' : 'text-slate-500 hover:text-white'}`}
+                                        >
+                                            <span>{child.label}</span>
+                                            {child.notification > 0 && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                          </div>
                       ))}
                   </nav>
                   <div className="p-4 border-t border-slate-800">
@@ -2197,9 +2239,16 @@ export default function App() {
                       {subView === 'all_logs' && <AllLogsView />}
                       {subView === 'users' && <UserManage />}
                       
-                      {/* New Split Views */}
-                      {subView === 'awardCreator' && <AwardAdminManager />}
-                      {subView === 'awardAudit' && <SystemAdminAwardManager />}
+                      {/* Award Admin Split Views */}
+                      {subView === 'award_create' && <AwardAdminManager viewMode="create" />}
+                      {subView === 'award_drafts' && <AwardAdminManager viewMode="drafts" />}
+                      {subView === 'award_returned' && <AwardAdminManager viewMode="returned" />}
+                      {subView === 'award_audit_list' && <AwardAdminManager viewMode="audit_list" />}
+                      
+                      {/* System Admin Split Views */}
+                      {subView === 'admin_audit' && <SystemAdminAwardManager viewMode="audit" />}
+                      {subView === 'admin_overview' && <SystemAdminAwardManager viewMode="overview" />}
+                      
                       {subView === 'issuanceManager' && <IssuanceManager />}                      
                       {subView === 'userCenter' && <UserCenterView user={user} refreshUser={refreshUser} onLogout={handleLogout} />}
                   </div>

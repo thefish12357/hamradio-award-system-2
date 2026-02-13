@@ -1011,9 +1011,10 @@ app.get('/api/user/my-awards', verifyToken, async (req, res) => {
 // API for User Logbook (View All) - Verified Logic
 app.get('/api/user/qsos', verifyToken, async (req, res) => {
     try {
-        const limit = 1000; // Hard limit for now
+        // 3. Removed LIMIT to show all logs as requested
         // Explicitly selecting columns to match frontend expectations
-        const r = await dbPool.query('SELECT id, callsign, band, mode, qso_date, country, state, adif_raw FROM qsos WHERE user_id=$1 ORDER BY qso_date DESC, id DESC LIMIT $2', [req.user.id, limit]);
+        // FIXED: Removed 'state' from SELECT as it is not a column in qsos table
+        const r = await dbPool.query('SELECT id, callsign, band, mode, qso_date, country, adif_raw FROM qsos WHERE user_id=$1 ORDER BY qso_date DESC, id DESC', [req.user.id]);
         res.json(r.rows);
     } catch(e) {
         res.status(500).json({error: e.message});
@@ -1155,5 +1156,5 @@ app.post('/api/admin/settings', verifyToken, verifyAdmin, require2FA, async (req
 
 // 启动
 loadConfig();
-const PORT = 3003;
+const PORT = 9993;
 http.createServer(app).listen(PORT, () => console.log(`Server running on port ${PORT}`));
