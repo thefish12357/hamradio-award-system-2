@@ -2,6 +2,8 @@
 
 这是一个基于 Node.js, React 和 PostgreSQL 的业余无线电奖项管理系统。
 
+基于BH2VSQ的代码继续开发和调试，源码仓库应该在页面的顶部显示
+
 ## **功能特性**
 
 * **ADIF 解析 (JSONB)**: 自动解析 LoTW 导出的文件，支持动态标签（如 SAT\_NAME）。  
