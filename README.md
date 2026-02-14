@@ -45,10 +45,24 @@ node server.js
 
 ### **5\. 首次安装**
 
-1. 打开浏览器访问 http://localhost:3003。  
-2. 界面会自动检测到尚未安装，显示安装向导。  
-3. 填写数据库信息 (Host, User, Pass, DB Name)。  
-4. 设置管理员账号 (Callsign) 和密码。  
+1. 打开浏览器访问 http://localhost:3003。
+2. 界面会自动检测到尚未安装，显示安装向导。
+3. 填写数据库信息 (Host, User, Pass, DB Name)。
+4. 填写 MinIO 配置信息 (EndPoint, Port, Access Key, Secret Key)。
+5. 设置管理员账号 (Callsign) 和密码。
+6. 完成安装后，系统会自动生成 `config.json` 文件。
+
+## **配置说明**
+
+### **配置文件**
+
+- `config.json` - 系统自动生成的配置文件，包含数据库和 MinIO 凭据等敏感信息。
+- `config.json.example` - 配置模板文件，可作为参考，但不包含实际敏感信息。
+
+### **敏感信息保护**
+
+- `config.json` 文件已在 `.gitignore` 中配置，不会被提交到版本控制系统。
+- 请确保不要手动修改 `config.json` 文件中的敏感信息，如有需要请通过安装向导重新配置。  
 
 ## **安全机制说明**
 

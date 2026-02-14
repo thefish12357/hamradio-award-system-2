@@ -1219,10 +1219,14 @@ const AwardDesigner = ({ initData, onClose }) => {
             if (uploadedImage) {
                 const blob = await generateCroppedImage();
                 if (blob) {
-                    const fd = new FormData();
-                    fd.append('bg', blob, 'award_bg.jpg');
-                    const uploadRes = await apiFetch('/awards/upload-bg', { method: 'POST', body: fd });
-                    finalBgUrl = uploadRes.url;
+                    try {
+                        const fd = new FormData();
+                        fd.append('bg', blob, 'award_bg.jpg');
+                        const uploadRes = await apiFetch('/awards/upload-bg', { method: 'POST', body: fd });
+                        finalBgUrl = uploadRes.url;
+                    } catch (error) {
+                        throw new Error(`底图上传失败: ${error.message || 'MinIO 未配置或服务不可用'}`);
+                    }
                 }
             }
 
