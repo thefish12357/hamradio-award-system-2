@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import html2canvas from 'html2canvas';
 // 移除外部引用，直接在下方定义
 // import InstallView from './install.jsx'; 
 import { 
@@ -435,6 +436,7 @@ const MyAwardsView = ({ user }) => {
     const [awards, setAwards] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedAward, setSelectedAward] = useState(null); // For detail view
+    const awardRefs = useRef({}); // Store refs for each award card
 
     useEffect(() => {
         apiFetch('/user/my-awards')
@@ -462,6 +464,71 @@ const MyAwardsView = ({ user }) => {
         return '#eab308'; // Default yellow-500
     };
 
+    const handleDownload = async (e, awardId, award) => {
+        e.stopPropagation();
+        
+        try {
+            const cardElement = awardRefs.current[awardId];
+            if (!cardElement) {
+                throw new Error('找不到奖状卡片元素');
+            }
+
+            // 创建一个克隆元素，用于生成无边框的图片
+            const cloneElement = cardElement.cloneNode(true);
+            // 移除克隆元素的边框
+            cloneElement.style.border = 'none';
+            cloneElement.style.boxShadow = 'none';
+            
+            // 临时将克隆元素添加到文档中（但不可见）
+            cloneElement.style.position = 'absolute';
+            cloneElement.style.top = '-9999px';
+            cloneElement.style.left = '-9999px';
+            document.body.appendChild(cloneElement);
+
+            // 使用 html2canvas 捕获克隆元素
+            const canvas = await html2canvas(cloneElement, {
+                scale: 2, // 提高清晰度
+                useCORS: true, // 允许跨域图片
+                backgroundColor: null, // 透明背景
+                allowTaint: true, // 允许加载跨域图片
+                letterRendering: true, // 改善字体渲染
+                useTransform: false, // 禁用CSS变换，避免位置偏移
+                removeContainer: true, // 移除临时容器
+                logging: false, // 禁用日志
+                // 确保所有CSS样式都被正确应用
+                style: {
+                    transform: 'none',
+                    WebkitTransform: 'none',
+                    filter: 'none',
+                    WebkitFilter: 'none',
+                    backfaceVisibility: 'visible'
+                }
+            });
+
+            // 移除临时克隆元素
+            document.body.removeChild(cloneElement);
+
+            // 将 canvas 转换为 blob 并下载
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `award_${award.serial_number}_${award.name.replace(/\s+/g, '_')}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } else {
+                    throw new Error('生成图片失败');
+                }
+            }, 'image/png', 1.0);
+        } catch (error) {
+            console.error('下载失败:', error);
+            alert('下载失败，请稍后重试');
+        }
+    };
+
     return (
         <div className="space-y-6">
             <h3 className="text-xl font-bold flex items-center gap-2"><Award className="text-orange-500"/> 我的荣誉墙 (My Awards)</h3>
@@ -471,8 +538,11 @@ const MyAwardsView = ({ user }) => {
                     const textColor = getContrastColor(badgeColor);
                     return (
                         <div key={ua.id} className="relative group perspective cursor-pointer" onClick={() => setSelectedAward(ua)}>
-                            {/* Certificate Card */}
-                            <div className="bg-white rounded-xl shadow-xl overflow-hidden border-4 border-slate-900 aspect-[1.414/1] relative">
+                            {/* Certificate Card with ref */}
+                            <div 
+                                ref={el => awardRefs.current[ua.id] = el}
+                                className="bg-white rounded-xl shadow-xl overflow-hidden border-4 border-slate-900 aspect-[1.414/1] relative"
+                            >
                                  {/* Background */}
                                  <div className="absolute inset-0 bg-cover bg-center" style={{backgroundImage: `url(${ua.bg_url})`}}></div>
                                  <div className="absolute inset-0 bg-black/10"></div>
@@ -506,6 +576,12 @@ const MyAwardsView = ({ user }) => {
                             {/* Action Bar */}
                             <div className="mt-4 flex justify-between items-center px-2">
                                  <div className="text-sm font-bold text-slate-600 flex items-center gap-2"><Eye size={14}/> {ua.name}</div>
+                                 <button 
+                                     onClick={(e) => handleDownload(e, ua.id, ua)}
+                                     className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
+                                 >
+                                     <Download size={12}/> 下载奖状
+                                 </button>
                             </div>
                         </div>
                     );
@@ -1855,7 +1931,7 @@ const AllLogsView = () => {
                                         <td className="p-4 font-bold">{log.callsign}</td>
                                         <td className="p-4">{log.band}</td>
                                         <td className="p-4">{log.mode}</td>
-                                        <td className="p-4 text-slate-500 truncate max-w-[150px]">{log.dxcc || log.country}</td>
+                                        <td className="p-4 text-slate-500 truncate max-w-[150px]">{(log.dxcc || log.country || '').toUpperCase()}</td>
                                     </tr>
                                 ))
                             )}
@@ -1875,8 +1951,17 @@ const AllLogsView = () => {
                             <div><span className="text-slate-400 block text-xs uppercase">Date</span><span className="font-bold">{detailQso.qso_date}</span></div>
                             <div><span className="text-slate-400 block text-xs uppercase">Band</span><span className="font-bold">{detailQso.band}</span></div>
                             <div><span className="text-slate-400 block text-xs uppercase">Mode</span><span className="font-bold">{detailQso.mode}</span></div>
-                            <div className="col-span-2"><span className="text-slate-400 block text-xs uppercase">DXCC</span><span className="font-bold">{detailQso.dxcc || detailQso.country || '-'}</span></div>
-                            <div className="col-span-2"><span className="text-slate-400 block text-xs uppercase">State</span><span className="font-bold">{detailQso.state || detailQso.adif_raw?.state || '-'}</span></div>
+                            <div className="col-span-2"><span className="text-slate-400 block text-xs uppercase">DXCC</span><span className="font-bold">{(detailQso.dxcc || detailQso.country || '-').toUpperCase()}</span></div>
+                            <div className="col-span-2"><span className="text-slate-400 block text-xs uppercase">State</span><span className="font-bold">{(() => {
+                                const state = detailQso.adif_raw?.state || detailQso.state || '';
+                                if (!state) return '-';
+                                const commentIndex = state.indexOf('//');
+                                if (commentIndex !== -1) {
+                                    const comment = state.substring(commentIndex + 2);
+                                    return comment.trim();
+                                }
+                                return state;
+                            })()}</span></div>
                         </div>
 
                         {/* 3. 查看该条日志参与申领的奖项 */}

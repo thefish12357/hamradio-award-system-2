@@ -80,6 +80,12 @@ jspm_packages/
 # MinIO client
 mc.exe
 
+# MinIO server
+minio.exe
+
+# MinIO data directory
+data/
+
 # dotenv environment variable files
 .env.development.local
 .env.test.local

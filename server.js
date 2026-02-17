@@ -89,12 +89,14 @@ function parseAdif(adifString) {
     if (!part.trim()) continue; // 跳过空记录
     const record = {};
     // 正则表达式匹配 ADIF 字段格式: <field: length>data
-    const regex = /<([a-zA-Z0-9_]+):(\d+)(?::[a-zA-Z])?>([^<]*)/g;
+    // 使用 [\s\S]*? 来匹配包括换行符在内的所有字符，确保捕获注释部分
+    const regex = /<([a-zA-Z0-9_]+):(\d+)(?::[a-zA-Z])?>([\s\S]*?)(?=<|$)/g;
     let match;
     while ((match = regex.exec(part)) !== null) {
       const field = match[1].toLowerCase(); // 字段名转小写
       const length = parseInt(match[2]); // 字段长度
-      const data = match[3].substring(0, length); // 提取指定长度的数据
+      // 对于所有字段，都保留完整数据，因为ADIF的长度字段可能不包括注释部分
+      const data = match[3]; // 提取完整数据
       record[field] = data.trim(); // 去除首尾空格
     }
     
