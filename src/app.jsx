@@ -1836,7 +1836,7 @@ const AllLogsView = () => {
                                 <th className="p-4">Callsign</th>
                                 <th className="p-4">Band</th>
                                 <th className="p-4">Mode</th>
-                                <th className="p-4">Country</th>
+                                <th className="p-4">DXCC</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y">
@@ -1855,7 +1855,7 @@ const AllLogsView = () => {
                                         <td className="p-4 font-bold">{log.callsign}</td>
                                         <td className="p-4">{log.band}</td>
                                         <td className="p-4">{log.mode}</td>
-                                        <td className="p-4 text-slate-500 truncate max-w-[150px]">{log.country}</td>
+                                        <td className="p-4 text-slate-500 truncate max-w-[150px]">{log.dxcc || log.country}</td>
                                     </tr>
                                 ))
                             )}
@@ -1875,7 +1875,7 @@ const AllLogsView = () => {
                             <div><span className="text-slate-400 block text-xs uppercase">Date</span><span className="font-bold">{detailQso.qso_date}</span></div>
                             <div><span className="text-slate-400 block text-xs uppercase">Band</span><span className="font-bold">{detailQso.band}</span></div>
                             <div><span className="text-slate-400 block text-xs uppercase">Mode</span><span className="font-bold">{detailQso.mode}</span></div>
-                            <div className="col-span-2"><span className="text-slate-400 block text-xs uppercase">Country</span><span className="font-bold">{detailQso.country || '-'}</span></div>
+                            <div className="col-span-2"><span className="text-slate-400 block text-xs uppercase">DXCC</span><span className="font-bold">{detailQso.dxcc || detailQso.country || '-'}</span></div>
                             <div className="col-span-2"><span className="text-slate-400 block text-xs uppercase">State</span><span className="font-bold">{detailQso.state || detailQso.adif_raw?.state || '-'}</span></div>
                         </div>
 

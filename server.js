@@ -47,6 +47,35 @@ let appConfig = {
  * ==========================================
  */
 /**
+ * 根据频率解析波段
+ * @param {string|number} freq - 频率值（单位：MHz）
+ * @returns {string} 对应的波段
+ */
+function getBandFromFrequency(freq) {
+  if (!freq) return '';
+  
+  // 转换为数字
+  const frequency = parseFloat(freq);
+  if (isNaN(frequency)) return '';
+  
+  // 常用波段频率范围映射
+  if (frequency >= 1.8 && frequency < 2.0) return '160m';
+  if (frequency >= 3.5 && frequency < 4.0) return '80m';
+  if (frequency >= 7.0 && frequency < 7.3) return '40m';
+  if (frequency >= 10.1 && frequency < 10.15) return '30m';
+  if (frequency >= 14.0 && frequency < 14.35) return '20m';
+  if (frequency >= 18.068 && frequency < 18.168) return '17m';
+  if (frequency >= 21.0 && frequency < 21.45) return '15m';
+  if (frequency >= 24.89 && frequency < 24.99) return '12m';
+  if (frequency >= 28.0 && frequency < 29.7) return '10m';
+  if (frequency >= 50.0 && frequency < 54.0) return '6m';
+  if (frequency >= 144.0 && frequency < 148.0) return '2m';
+  if (frequency >= 430.0 && frequency < 440.0) return '70cm';
+  
+  return '';
+}
+
+/**
  * 解析 ADIF 格式的日志文件
  * @param {string} adifString - ADIF 格式的原始字符串
  * @returns {Array} 解析后的 QSO 记录数组
@@ -68,12 +97,230 @@ function parseAdif(adifString) {
       const data = match[3].substring(0, length); // 提取指定长度的数据
       record[field] = data.trim(); // 去除首尾空格
     }
+    
+    // 如果没有band字段但有freq字段，尝试从频率解析波段
+    if (!record.band && record.freq) {
+      record.band = getBandFromFrequency(record.freq);
+    }
+    
+    // 如果band是纯数字，添加单位M
+    if (record.band && !isNaN(parseFloat(record.band)) && isFinite(record.band)) {
+      record.band = record.band + 'M';
+    }
+    
     // 只保留包含呼号和日期的有效记录
     if (record.call && record.qso_date) {
       records.push(record);
     }
   }
   return records;
+}
+
+/**
+ * 解析 cty.dat 文件，构建前缀到 DXCC 的映射
+ * @returns {Object} 包含前缀映射、DXCC 代码映射和 DXCC 信息的对象
+ */
+function parseCtyDat() {
+  const ctyDatPath = path.join(__dirname, 'cty.dat');
+  if (!fs.existsSync(ctyDatPath)) {
+    console.warn('cty.dat file not found');
+    return { prefixMap: {}, dxccCodeMap: {}, dxccInfo: {} };
+  }
+  
+  const content = fs.readFileSync(ctyDatPath, 'utf8');
+  const lines = content.split('\n');
+  const prefixMap = {};
+  const dxccCodeMap = {};
+  const dxccInfo = {};
+  
+  let currentDxcc = null;
+  let currentDxccCode = null;
+  let currentPrefixes = [];
+  
+  for (let line of lines) {
+    line = line.trim();
+    if (!line || line.startsWith('#')) continue;
+    
+    // 检查是否是新的 DXCC 记录行
+    if (!line.startsWith('=')) {
+      // 保存之前的 DXCC 信息
+      if (currentDxcc && currentPrefixes.length > 0) {
+        for (let prefix of currentPrefixes) {
+          if (!prefixMap[prefix]) {
+            prefixMap[prefix] = currentDxcc;
+          }
+        }
+        dxccInfo[currentDxcc] = {
+          name: currentDxcc,
+          code: currentDxccCode,
+          prefixes: currentPrefixes
+        };
+        // 构建 DXCC 代码到名称的映射
+        if (currentDxccCode) {
+          dxccCodeMap[currentDxccCode] = currentDxcc;
+        }
+      }
+      
+      // 解析新的 DXCC 记录
+      // 提取DXCC名称（冒号前的部分）
+      const colonIndex = line.indexOf(':');
+      if (colonIndex > 0) {
+        const dxccName = line.substring(0, colonIndex).trim();
+        currentDxcc = dxccName;
+        
+        // 尝试从行中提取DXCC代码
+        // 格式通常是: [名称]: [dxcc_code]: [itu_zone]: [continent]: ...
+        const parts = line.substring(colonIndex + 1).split(':').map(p => p.trim());
+        if (parts.length > 0) {
+          const codePart = parts[0];
+          if (codePart && !isNaN(codePart)) {
+            currentDxccCode = codePart;
+          } else {
+            currentDxccCode = null;
+          }
+        } else {
+          currentDxccCode = null;
+        }
+      } else {
+        currentDxcc = line.trim();
+        currentDxccCode = null;
+      }
+      currentPrefixes = [];
+    } else {
+      // 解析前缀行
+      let prefixPart = line.substring(1).trim();
+      // 移除行尾的分号
+      if (prefixPart.endsWith(';')) {
+        prefixPart = prefixPart.slice(0, -1);
+      }
+      // 按逗号分割前缀
+      const prefixes = prefixPart.split(',').map(p => p.trim().toUpperCase());
+      // 添加有效的前缀
+      for (let p of prefixes) {
+        if (p) {
+          currentPrefixes.push(p);
+        }
+      }
+    }
+  }
+  
+  // 保存最后一个 DXCC 信息
+  if (currentDxcc && currentPrefixes.length > 0) {
+    for (let prefix of currentPrefixes) {
+      if (!prefixMap[prefix]) {
+        prefixMap[prefix] = currentDxcc;
+      }
+    }
+    dxccInfo[currentDxcc] = {
+      name: currentDxcc,
+      code: currentDxccCode,
+      prefixes: currentPrefixes
+    };
+    // 构建 DXCC 代码到名称的映射
+    if (currentDxccCode) {
+      dxccCodeMap[currentDxccCode] = currentDxcc;
+    }
+  }
+  
+  // 特殊处理：手动添加常见前缀映射
+  // 中国前缀
+  const chinaPrefixes = ['BA', 'BB', 'BC', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BK', 'BL', 'BM', 'BN', 'BO', 'BP', 'BQ', 'BR', 'BS', 'BT', 'BU', 'BV', 'BW', 'BX', 'BY', 'BZ'];
+  for (let prefix of chinaPrefixes) {
+    if (!prefixMap[prefix]) {
+      prefixMap[prefix] = 'China';
+    }
+  }
+  
+  // 美国前缀
+  const usaPrefixes = ['W', 'K', 'N', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN', 'AO', 'AP', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AV', 'AW', 'AX', 'AY', 'AZ'];
+  for (let prefix of usaPrefixes) {
+    if (!prefixMap[prefix]) {
+      prefixMap[prefix] = 'United States';
+    }
+  }
+  
+  // 俄罗斯前缀
+  const russiaPrefixes = ['UA', 'UA0', 'UA1', 'UA2', 'UA3', 'UA4', 'UA5', 'UA6', 'UA7', 'UA8', 'UA9', 'UW', 'UX', 'UY', 'UZ', 'RA', 'RB', 'RC', 'RD', 'RE', 'RF', 'RG', 'RH', 'RI', 'RJ', 'RK', 'RL', 'RM', 'RN', 'RO', 'RP', 'RQ', 'RR', 'RS', 'RT', 'RU', 'RV', 'RW', 'RX', 'RY', 'RZ'];
+  for (let prefix of russiaPrefixes) {
+    if (!prefixMap[prefix]) {
+      prefixMap[prefix] = 'Russia';
+    }
+  }
+  
+  // 确保DXCC代码映射正确
+  dxccCodeMap['24'] = 'China';
+  dxccCodeMap['05'] = 'United States';
+  dxccCodeMap['16'] = 'European Russia';
+  dxccCodeMap['17'] = 'Asiatic Russia';
+  dxccCodeMap['15'] = 'Vienna Intl Ctr';
+  
+  // 添加更多常用DXCC代码映射
+  dxccCodeMap['291'] = 'International Space Station';
+  dxccCodeMap['239'] = 'United Nations HQ';
+  dxccCodeMap['001'] = 'Canada';
+  dxccCodeMap['002'] = 'Mexico';
+  dxccCodeMap['003'] = 'Cuba';
+  dxccCodeMap['004'] = 'Bahamas';
+  dxccCodeMap['006'] = 'Belize';
+  dxccCodeMap['007'] = 'Guatemala';
+  dxccCodeMap['008'] = 'El Salvador';
+  dxccCodeMap['009'] = 'Honduras';
+  dxccCodeMap['010'] = 'Nicaragua';
+  dxccCodeMap['011'] = 'Costa Rica';
+  dxccCodeMap['012'] = 'Panama';
+  
+  return { prefixMap, dxccCodeMap, dxccInfo };
+}
+
+// 解析 cty.dat 文件
+const { prefixMap, dxccCodeMap: parsedDxccCodeMap } = parseCtyDat();
+
+// 读取 dxcc_codes.json 文件
+let dxccCodeMap = { ...parsedDxccCodeMap };
+try {
+  const dxccCodesPath = path.join(__dirname, 'dxcc_codes.json');
+  if (fs.existsSync(dxccCodesPath)) {
+    const dxccCodesData = fs.readFileSync(dxccCodesPath, 'utf8');
+    const dxccCodes = JSON.parse(dxccCodesData);
+    if (dxccCodes.dxcc_codes) {
+      dxccCodeMap = { ...dxccCodeMap, ...dxccCodes.dxcc_codes };
+      console.log('DXCC codes loaded from dxcc_codes.json');
+    }
+  }
+} catch (error) {
+  console.warn('Error loading dxcc_codes.json:', error.message);
+}
+
+/**
+ * 根据呼号推断 DXCC
+ * @param {string} callsign - 呼号
+ * @returns {string} DXCC 名称
+ */
+function inferDxccFromCallsign(callsign) {
+  if (!callsign) return '';
+  
+  // 转换为大写
+  const call = callsign.toUpperCase();
+  
+  // 特殊处理：以B开头的呼号直接锁定为中国
+  if (call.startsWith('B')) {
+    return 'China';
+  }
+  
+  // 尝试匹配最长的前缀
+  let longestMatch = '';
+  let matchedDxcc = '';
+  
+  for (let i = call.length; i > 0; i--) {
+    const prefix = call.substring(0, i);
+    if (prefixMap[prefix]) {
+      longestMatch = prefix;
+      matchedDxcc = prefixMap[prefix];
+      break;
+    }
+  }
+  
+  return matchedDxcc;
 }
 
 /**
@@ -187,7 +434,7 @@ async function upgradeSchema() {
         callsign VARCHAR(20),
         band VARCHAR(10),
         mode VARCHAR(10),
-        dxcc VARCHAR(10),
+        dxcc VARCHAR(100),
         country VARCHAR(100),
         qso_date VARCHAR(20),
         adif_raw JSONB NOT NULL, 
@@ -195,6 +442,12 @@ async function upgradeSchema() {
         UNIQUE(user_id, callsign, band, mode, qso_date)
       );
     `);
+
+    // 检查并修改 dxcc 字段长度
+    const checkDxccCol = await client.query("SELECT character_maximum_length FROM information_schema.columns WHERE table_name='qsos' AND column_name='dxcc'");
+    if (checkDxccCol.rows.length > 0 && checkDxccCol.rows[0].character_maximum_length < 100) {
+        await client.query("ALTER TABLE qsos ALTER COLUMN dxcc TYPE VARCHAR(100)");
+    }
 
     // 创建 Awards 表
     await client.query(`
@@ -855,11 +1108,30 @@ app.post('/api/logbook/upload', verifyToken, upload.single('file'), async (req, 
         try {
             await client.query('BEGIN');
             for (let r of records) {
+                // 处理 dxcc 字段
+                let dxcc = '';
+                
+                // 优先级 1: 使用 COUNTRY 字段
+                if (r.country) {
+                    dxcc = r.country;
+                }
+                // 优先级 2: 使用 dxcc 字段（如果是数字，转换为名称）
+                else if (r.dxcc) {
+                    if (!isNaN(r.dxcc)) {
+                        dxcc = dxccCodeMap[r.dxcc] || r.dxcc;
+                    } else {
+                        dxcc = r.dxcc;
+                    }
+                }
+                // 优先级 3: 根据呼号推断
+                else {
+                    dxcc = inferDxccFromCallsign(r.call);
+                }
                 await client.query(`
                     INSERT INTO qsos (user_id, callsign, band, mode, qso_date, dxcc, country, adif_raw)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     ON CONFLICT (user_id, callsign, band, mode, qso_date) DO NOTHING
-                `, [req.user.id, r.call || '', r.band || '', r.mode || '', r.qso_date || '', r.dxcc || '', r.country || '', JSON.stringify(r)]);
+                `, [req.user.id, r.call || '', r.band || '', r.mode || '', r.qso_date || '', dxcc || '', r.country || '', JSON.stringify(r)]);
                 imported++;
             }
             await client.query('COMMIT');
@@ -1116,7 +1388,7 @@ app.get('/api/user/qsos', verifyToken, async (req, res) => {
         // 3. Removed LIMIT to show all logs as requested
         // Explicitly selecting columns to match frontend expectations
         // FIXED: Removed 'state' from SELECT as it is not a column in qsos table
-        const r = await dbPool.query('SELECT id, callsign, band, mode, qso_date, country, adif_raw FROM qsos WHERE user_id=$1 ORDER BY qso_date DESC, id DESC', [req.user.id]);
+        const r = await dbPool.query('SELECT id, callsign, band, mode, qso_date, dxcc, country, adif_raw FROM qsos WHERE user_id=$1 ORDER BY qso_date DESC, id DESC', [req.user.id]);
         res.json(r.rows);
     } catch(e) {
         res.status(500).json({error: e.message});
