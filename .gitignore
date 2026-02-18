@@ -140,3 +140,7 @@ public
 .yarn/install-state.gz
 .pnp.*
 /uploads
+ 
+# Project-specific binary/data files not for repo
+*.sqlite
+*.db
